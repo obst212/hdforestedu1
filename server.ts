@@ -121,25 +121,19 @@ app.post(["/api/gemini", "/gemini"], async (req, res) => {
     const { fileData, mimeType, fileName } = req.body;
 
     if (!fileData || !mimeType) {
-      return res.status(400).json({ error: "파일 데이터와 MIME 타입이 필요합니다." });
+      return res.status(200).json({ success: false, error: "파일 데이터와 MIME 타입이 필요합니다." });
     }
 
     const apiKey = process.env.GEMINI_API_KEY;
     if (!apiKey) {
-      return res.status(500).json({
-        error: "GEMINI_API_KEY가 설정되지 않았습니다. Settings > Secrets 또는 Vercel Environment Variables에 API 키를 등록해주세요."
+      return res.status(200).json({
+        success: false,
+        error: "GEMINI_API_KEY가 설정되지 않았습니다. Vercel 대시보드 > Settings > Environment Variables에 GEMINI_API_KEY를 추가하신 후 재배포해 주세요."
       });
     }
 
     // Initialize @google/genai SDK on server side
-    const ai = new GoogleGenAI({
-      apiKey,
-      httpOptions: {
-        headers: {
-          "User-Agent": "aistudio-build",
-        }
-      }
-    });
+    const ai = new GoogleGenAI({ apiKey });
 
     // Clean base64 string reliably
     const cleanBase64 = fileData.includes(';base64,') 
@@ -163,10 +157,11 @@ app.post(["/api/gemini", "/gemini"], async (req, res) => {
 
 단 한 항목도 빠뜨리지 말고 추출된 데이터 기반으로 완벽한 JSON을 구성하세요.`;
 
-    const response = await ai.models.generateContent({
-      model: "gemini-2.5-flash",
-      contents: {
-        parts: [
+    let responseText = "";
+    try {
+      const response = await ai.models.generateContent({
+        model: "gemini-2.5-flash",
+        contents: [
           {
             inlineData: {
               mimeType: finalMime,
@@ -176,28 +171,47 @@ app.post(["/api/gemini", "/gemini"], async (req, res) => {
           {
             text: promptText,
           }
-        ]
-      },
-      config: {
-        responseMimeType: "application/json",
-        responseSchema: {
-          type: Type.OBJECT,
-          properties: {
-            certificateNo: { type: Type.STRING, description: "이수번호" },
-            hours: { type: Type.NUMBER, description: "이수시간 (숫자)" },
-            completionDate: { type: Type.STRING, description: "이수완료일자 (YYYY-MM-DD)" },
-            issuer: { type: Type.STRING, description: "인증기관명" },
-            courseName: { type: Type.STRING, description: "연수과정명" },
-          },
-          required: ["certificateNo", "hours", "completionDate", "issuer", "courseName"],
+        ],
+        config: {
+          responseMimeType: "application/json",
+          responseSchema: {
+            type: Type.OBJECT,
+            properties: {
+              certificateNo: { type: Type.STRING, description: "이수번호" },
+              hours: { type: Type.NUMBER, description: "이수시간 (숫자)" },
+              completionDate: { type: Type.STRING, description: "이수완료일자 (YYYY-MM-DD)" },
+              issuer: { type: Type.STRING, description: "인증기관명" },
+              courseName: { type: Type.STRING, description: "연수과정명" },
+            },
+            required: ["certificateNo", "hours", "completionDate", "issuer", "courseName"],
+          }
         }
-      }
-    });
+      });
+      responseText = response.text || "{}";
+    } catch (modelErr: any) {
+      console.warn("Gemini 2.5 Flash schema call failed, trying fallback prompt:", modelErr?.message);
+      const fallbackResponse = await ai.models.generateContent({
+        model: "gemini-2.5-flash",
+        contents: [
+          {
+            inlineData: {
+              mimeType: finalMime,
+              data: cleanBase64,
+            }
+          },
+          {
+            text: promptText + "\n응답은 반드시 마크다운 없이 순수 JSON 객체만 반환해 주세요."
+          }
+        ]
+      });
+      responseText = fallbackResponse.text || "{}";
+    }
 
-    const responseText = response.text || "{}";
     let extractedData;
     try {
-      extractedData = JSON.parse(responseText);
+      // Strip potential markdown code blocks if fallback was used
+      const cleanedJsonText = responseText.replace(/```json/g, "").replace(/```/g, "").trim();
+      extractedData = JSON.parse(cleanedJsonText);
     } catch {
       extractedData = {
         certificateNo: "",
@@ -225,7 +239,8 @@ app.post(["/api/gemini", "/gemini"], async (req, res) => {
 
   } catch (err: any) {
     console.error("Gemini Extraction Error:", err);
-    return res.status(500).json({
+    return res.status(200).json({
+      success: false,
       error: "이수증 분석 중 오류가 발생했습니다: " + (err.message || "알 수 없는 오류")
     });
   }

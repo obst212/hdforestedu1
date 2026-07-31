@@ -131,27 +131,34 @@ export const UserSubmissionWizard: React.FC<UserSubmissionWizardProps> = ({
     });
   };
 
-  // Safe helper to parse JSON responses and avoid HTML crash errors
+  // Safe helper to parse JSON responses and handle Vercel serverless errors gracefully
   const safeParseJson = async (res: Response) => {
     const text = await res.text();
+    let data: any = null;
     try {
-      const data = JSON.parse(text);
-      if (!res.ok && data.error) {
+      data = JSON.parse(text);
+    } catch {
+      data = null;
+    }
+
+    if (data) {
+      if (data.error && !data.success && !res.ok) {
         throw new Error(data.error);
       }
       return data;
-    } catch (err: any) {
-      if (err.message && !err.message.startsWith('서버 응답 오류') && !err.message.includes('JSON')) {
-        throw err;
-      }
-      if (res.status === 413) {
-        throw new Error('파일 용량이 너무 큽니다. 더 적은 용량의 이수증 파일(10MB 이하)을 선택해 주세요.');
-      }
-      if (!res.ok) {
-        throw new Error(`서버 응답 오류 (HTTP ${res.status}). 잠시 후 다시 시도해 주세요.`);
-      }
-      throw new Error('서버에서 올바르지 않은 응답(HTML)이 반환되었습니다.');
     }
+
+    // Handle non-JSON HTML response cases (Vercel Serverless Function errors)
+    if (res.status === 413) {
+      throw new Error('파일 용량이 너무 큽니다. 10MB 이하의 이수증 파일을 선택해 주세요.');
+    }
+    if (res.status === 504 || res.status === 500) {
+      throw new Error(`Vercel 서버 처리 중 오류(HTTP ${res.status})가 발생했습니다. Vercel 환경변수(GEMINI_API_KEY) 설정 상태를 확인하시거나 '직접 입력' 탭을 이용해 주세요.`);
+    }
+    if (!res.ok) {
+      throw new Error(`서버 응답 오류 (HTTP ${res.status}). 하단 양식에서 직접 입력할 수 있습니다.`);
+    }
+    throw new Error('서버에서 올바르지 않은 응답이 반환되었습니다.');
   };
 
   // Handle File Selection and AI Extraction

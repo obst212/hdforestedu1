@@ -1,0 +1,6 @@
+{
+  "name": "2026 현동숲유치원 교직원 연수 이수증 관리",
+  "description": "2026년 현동숲유치원 교직원 연수 이수증 제출, AI 자동 추출, 실시간 취합 및 관리자 현황 분석 시스템",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

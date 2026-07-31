@@ -10,8 +10,8 @@ const app = express();
 const PORT = 3000;
 
 // Increase payload limits for image/PDF uploads
-app.use(express.json({ limit: "30mb" }));
-app.use(express.urlencoded({ extended: true, limit: "30mb" }));
+app.use(express.json({ limit: "10mb" }));
+app.use(express.urlencoded({ extended: true, limit: "10mb" }));
 
 // In-memory submissions database with initial sample data for 2026 현동숲유치원
 let submissions = [
@@ -133,7 +133,14 @@ app.post(["/api/gemini", "/gemini"], async (req, res) => {
     }
 
     // Initialize @google/genai SDK on server side
-    const ai = new GoogleGenAI({ apiKey });
+    const ai = new GoogleGenAI({
+      apiKey,
+      httpOptions: {
+        headers: {
+          "User-Agent": "aistudio-build",
+        }
+      }
+    });
 
     // Clean base64 string reliably
     const cleanBase64 = fileData.includes(';base64,') 
@@ -160,7 +167,7 @@ app.post(["/api/gemini", "/gemini"], async (req, res) => {
     let responseText = "";
     try {
       const response = await ai.models.generateContent({
-        model: "gemini-2.5-flash",
+        model: "gemini-3.6-flash",
         contents: [
           {
             inlineData: {
@@ -189,22 +196,30 @@ app.post(["/api/gemini", "/gemini"], async (req, res) => {
       });
       responseText = response.text || "{}";
     } catch (modelErr: any) {
-      console.warn("Gemini 2.5 Flash schema call failed, trying fallback prompt:", modelErr?.message);
-      const fallbackResponse = await ai.models.generateContent({
-        model: "gemini-2.5-flash",
-        contents: [
-          {
-            inlineData: {
-              mimeType: finalMime,
-              data: cleanBase64,
+      console.warn("Gemini 3.6 Flash structured call failed, trying fallback prompt:", modelErr?.message);
+      try {
+        const fallbackResponse = await ai.models.generateContent({
+          model: "gemini-3.6-flash",
+          contents: [
+            {
+              inlineData: {
+                mimeType: finalMime,
+                data: cleanBase64,
+              }
+            },
+            {
+              text: promptText + "\n응답은 반드시 마크다운 없이 순수 JSON 객체만 반환해 주세요."
             }
-          },
-          {
-            text: promptText + "\n응답은 반드시 마크다운 없이 순수 JSON 객체만 반환해 주세요."
-          }
-        ]
-      });
-      responseText = fallbackResponse.text || "{}";
+          ]
+        });
+        responseText = fallbackResponse.text || "{}";
+      } catch (fallbackErr: any) {
+        console.error("Gemini API call completely failed:", fallbackErr);
+        return res.status(200).json({
+          success: false,
+          error: "Gemini AI 이수증 분석 중 오류가 발생했습니다: " + (fallbackErr?.message || modelErr?.message || "API 호출 실패") + ". 하단 양식에서 '직접 입력'을 이용하실 수 있습니다."
+        });
+      }
     }
 
     let extractedData;
@@ -352,6 +367,21 @@ app.post(["/api/config", "/config"], (req, res) => {
 // Fallback for unmatched /api routes to prevent HTML response
 app.use(["/api/*", "/api"], (_req, res) => {
   res.status(404).json({ error: "요청하신 API 경로를 찾을 수 없습니다." });
+});
+
+// Express Global Error Handler for Vercel/Express
+app.use((err: any, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
+  console.error("Global express error:", err);
+  if (err.type === "entity.too.large" || err.status === 413) {
+    return res.status(200).json({
+      success: false,
+      error: "파일 용량이 Vercel 서버 제한(4.5MB)을 초과했습니다. 3MB 이하의 파일/이미지를 업로드하시거나 '직접 입력'을 이용해 주세요."
+    });
+  }
+  return res.status(200).json({
+    success: false,
+    error: err.message || "서버 내부 처리 중 오류가 발생했습니다. '직접 입력'을 이용해 주세요."
+  });
 });
 
 // Export default app for Vercel serverless functions

@@ -92,28 +92,37 @@ export const UserSubmissionWizard: React.FC<UserSubmissionWizardProps> = ({
         const img = new Image();
         const reader = new FileReader();
         reader.onload = (e) => {
-          img.src = e.target?.result as string;
+          const rawUrl = e.target?.result as string;
+          img.src = rawUrl;
           img.onload = () => {
             const maxWidth = 1600;
             let width = img.width;
             let height = img.height;
-            if (width > maxWidth) {
-              height = Math.round((height * maxWidth) / width);
-              width = maxWidth;
+            if (width > maxWidth || height > maxWidth) {
+              if (width > height) {
+                height = Math.round((height * maxWidth) / width);
+                width = maxWidth;
+              } else {
+                width = Math.round((width * maxWidth) / height);
+                height = maxWidth;
+              }
             }
             const canvas = document.createElement('canvas');
             canvas.width = width;
             canvas.height = height;
             const ctx = canvas.getContext('2d');
-            ctx?.drawImage(img, 0, 0, width, height);
-            const compressedUrl = canvas.toDataURL('image/jpeg', 0.85);
+            if (!ctx) {
+              return resolve({ base64: rawUrl, mimeType: file.type });
+            }
+            ctx.drawImage(img, 0, 0, width, height);
+            const compressedUrl = canvas.toDataURL('image/jpeg', 0.82);
             resolve({
               base64: compressedUrl,
               mimeType: 'image/jpeg',
             });
           };
           img.onerror = () => {
-            reader.readAsDataURL(file);
+            resolve({ base64: rawUrl, mimeType: file.type || 'image/jpeg' });
           };
         };
         reader.onerror = (error) => reject(error);
@@ -121,10 +130,17 @@ export const UserSubmissionWizard: React.FC<UserSubmissionWizardProps> = ({
       } else {
         // PDF or other documents
         const reader = new FileReader();
-        reader.onload = () => resolve({
-          base64: reader.result as string,
-          mimeType: file.type || 'application/pdf',
-        });
+        reader.onload = () => {
+          const base64Str = reader.result as string;
+          // Check payload size for Vercel 4.5MB limit
+          if (base64Str.length > 3.2 * 1024 * 1024) {
+            return reject(new Error('PDF 파일 용량이 너무 큽니다 (Vercel 서버 수신 제한 3MB 초과). 3MB 이하의 PDF 또는 이미지 파일로 업로드하시거나 아래에서 \'직접 입력\'을 이용해 주세요.'));
+          }
+          resolve({
+            base64: base64Str,
+            mimeType: file.type || 'application/pdf',
+          });
+        };
         reader.onerror = (error) => reject(error);
         reader.readAsDataURL(file);
       }
@@ -142,7 +158,7 @@ export const UserSubmissionWizard: React.FC<UserSubmissionWizardProps> = ({
     }
 
     if (data) {
-      if (data.error && !data.success && !res.ok) {
+      if (data.error) {
         throw new Error(data.error);
       }
       return data;
@@ -150,15 +166,15 @@ export const UserSubmissionWizard: React.FC<UserSubmissionWizardProps> = ({
 
     // Handle non-JSON HTML response cases (Vercel Serverless Function errors)
     if (res.status === 413) {
-      throw new Error('파일 용량이 너무 큽니다. 10MB 이하의 이수증 파일을 선택해 주세요.');
+      throw new Error('파일 용량이 Vercel 서버 제한(4.5MB)을 초과했습니다. 3MB 이하의 PDF/이미지를 업로드해 주세요.');
     }
     if (res.status === 504 || res.status === 500) {
-      throw new Error(`Vercel 서버 처리 중 오류(HTTP ${res.status})가 발생했습니다. Vercel 환경변수(GEMINI_API_KEY) 설정 상태를 확인하시거나 '직접 입력' 탭을 이용해 주세요.`);
+      throw new Error(`Vercel 서버 처리 중 오류(HTTP ${res.status})가 발생했습니다. Vercel 환경변수 (GEMINI_API_KEY) 설정 상태를 확인하시거나 하단 '직접 입력'을 이용해 주세요.`);
     }
     if (!res.ok) {
       throw new Error(`서버 응답 오류 (HTTP ${res.status}). 하단 양식에서 직접 입력할 수 있습니다.`);
     }
-    throw new Error('서버에서 올바르지 않은 응답이 반환되었습니다.');
+    throw new Error('서버에서 올바르지 않은 응답이 반환되었습니다. 하단 양식에서 직접 입력해 주세요.');
   };
 
   // Handle File Selection and AI Extraction

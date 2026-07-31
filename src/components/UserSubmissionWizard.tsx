@@ -84,20 +84,79 @@ export const UserSubmissionWizard: React.FC<UserSubmissionWizardProps> = ({
     setCurrentStep(2);
   };
 
-  // Convert File to Base64
-  const fileToBase64 = (file: File): Promise<string> => {
+  // Convert File to Base64 with optional Image Compression
+  const fileToBase64 = (file: File): Promise<{ base64: string; mimeType: string }> => {
     return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.readAsDataURL(file);
-      reader.onload = () => resolve(reader.result as string);
-      reader.onerror = (error) => reject(error);
+      // If image file, compress via canvas to avoid giant payload errors
+      if (file.type.startsWith('image/')) {
+        const img = new Image();
+        const reader = new FileReader();
+        reader.onload = (e) => {
+          img.src = e.target?.result as string;
+          img.onload = () => {
+            const maxWidth = 1600;
+            let width = img.width;
+            let height = img.height;
+            if (width > maxWidth) {
+              height = Math.round((height * maxWidth) / width);
+              width = maxWidth;
+            }
+            const canvas = document.createElement('canvas');
+            canvas.width = width;
+            canvas.height = height;
+            const ctx = canvas.getContext('2d');
+            ctx?.drawImage(img, 0, 0, width, height);
+            const compressedUrl = canvas.toDataURL('image/jpeg', 0.85);
+            resolve({
+              base64: compressedUrl,
+              mimeType: 'image/jpeg',
+            });
+          };
+          img.onerror = () => {
+            reader.readAsDataURL(file);
+          };
+        };
+        reader.onerror = (error) => reject(error);
+        reader.readAsDataURL(file);
+      } else {
+        // PDF or other documents
+        const reader = new FileReader();
+        reader.onload = () => resolve({
+          base64: reader.result as string,
+          mimeType: file.type || 'application/pdf',
+        });
+        reader.onerror = (error) => reject(error);
+        reader.readAsDataURL(file);
+      }
     });
+  };
+
+  // Safe helper to parse JSON responses and avoid HTML crash errors
+  const safeParseJson = async (res: Response) => {
+    const text = await res.text();
+    try {
+      return JSON.parse(text);
+    } catch {
+      if (res.status === 413) {
+        throw new Error('파일 용량이 너무 큽니다. 더 적은 용량의 이수증 파일(10MB 이하)을 선택해 주세요.');
+      }
+      if (!res.ok) {
+        throw new Error(`서버 응답 오류 (HTTP ${res.status}). 잠시 후 다시 시도해 주세요.`);
+      }
+      throw new Error('서버에서 올바르지 않은 응답(HTML)이 반환되었습니다.');
+    }
   };
 
   // Handle File Selection and AI Extraction
   const handleFileChange = async (file: File) => {
     setSelectedFile(file);
     setAiSuccess(false);
+
+    // Check file size warning (> 20MB)
+    if (file.size > 20 * 1024 * 1024) {
+      onError('파일 용량이 20MB를 초과합니다. 10MB 이하의 이수증 파일(PDF 또는 이미지)을 업로드해주세요.');
+      return;
+    }
 
     // Image preview
     if (file.type.startsWith('image/')) {
@@ -110,18 +169,18 @@ export const UserSubmissionWizard: React.FC<UserSubmissionWizardProps> = ({
     // Call /api/gemini
     setIsAiProcessing(true);
     try {
-      const base64Data = await fileToBase64(file);
+      const { base64: base64Data, mimeType } = await fileToBase64(file);
       const res = await fetch('/api/gemini', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           fileData: base64Data,
-          mimeType: file.type || 'application/pdf',
+          mimeType: mimeType,
           fileName: file.name,
         }),
       });
 
-      const json = await res.json();
+      const json = await safeParseJson(res);
 
       if (res.ok && json.success && json.data) {
         const ext: GeminiExtractionResult = json.data;
@@ -138,7 +197,7 @@ export const UserSubmissionWizard: React.FC<UserSubmissionWizardProps> = ({
         );
       }
     } catch (err: any) {
-      onError('서버 통신 실패: ' + err.message);
+      onError('AI 분석 오류: ' + (err.message || '서버 통신 실패'));
     } finally {
       setIsAiProcessing(false);
     }
@@ -182,7 +241,7 @@ export const UserSubmissionWizard: React.FC<UserSubmissionWizardProps> = ({
         body: JSON.stringify(payload),
       });
 
-      const json = await res.json();
+      const json = await safeParseJson(res);
 
       if (res.ok && json.success && json.submission) {
         onSubmitSuccess(json.submission, json.message);
@@ -191,7 +250,7 @@ export const UserSubmissionWizard: React.FC<UserSubmissionWizardProps> = ({
         onError(json.error || '제출 저장에 실패했습니다.');
       }
     } catch (err: any) {
-      onError('서버 연결 실패: ' + err.message);
+      onError('제출 오류: ' + (err.message || '서버 연결 실패'));
     } finally {
       setIsSubmitting(false);
     }

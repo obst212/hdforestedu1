@@ -141,8 +141,17 @@ app.post("/api/gemini", async (req, res) => {
       }
     });
 
-    // Strip header prefix if present (e.g. data:image/png;base64,)
-    const cleanBase64 = fileData.replace(/^data:([a-zA-Z0-9-]+\/[a-zA-Z0-9-.+]+);base64,/, "");
+    // Clean base64 string reliably
+    const cleanBase64 = fileData.includes(';base64,') 
+      ? fileData.split(';base64,').pop()!.trim() 
+      : fileData.trim();
+
+    // Normalize MIME types for Gemini API
+    let finalMime = mimeType;
+    if (finalMime === "image/jpg") finalMime = "image/jpeg";
+    if (!finalMime || finalMime === "application/octet-stream") {
+      finalMime = "image/jpeg";
+    }
 
     const promptText = `이 문서는 교직원 연수 이수증(PDF 또는 이미지)입니다.
 문서에서 다음 5개 항목을 정확히 분석하여 JSON 포맷으로 추출하세요:
@@ -160,7 +169,7 @@ app.post("/api/gemini", async (req, res) => {
         parts: [
           {
             inlineData: {
-              mimeType: mimeType,
+              mimeType: finalMime,
               data: cleanBase64,
             }
           },

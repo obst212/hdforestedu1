@@ -99,12 +99,12 @@ let gasUrl = process.env.GAS_URL || "";
 let targetStaffCount = 20;
 
 // API Health Check
-app.get("/api/health", (_req, res) => {
+app.get(["/api/health", "/health"], (_req, res) => {
   res.json({ status: "ok", timestamp: new Date().toISOString() });
 });
 
 // Admin PIN Verification
-app.post("/api/admin/verify-pin", (req, res) => {
+app.post(["/api/admin/verify-pin", "/admin/verify-pin"], (req, res) => {
   const { pin } = req.body;
   const adminPin = process.env.ADMIN_PIN || "1234";
 
@@ -116,7 +116,7 @@ app.post("/api/admin/verify-pin", (req, res) => {
 });
 
 // Gemini AI OCR Route
-app.post("/api/gemini", async (req, res) => {
+app.post(["/api/gemini", "/gemini"], async (req, res) => {
   try {
     const { fileData, mimeType, fileName } = req.body;
 
@@ -127,7 +127,7 @@ app.post("/api/gemini", async (req, res) => {
     const apiKey = process.env.GEMINI_API_KEY;
     if (!apiKey) {
       return res.status(500).json({
-        error: "GEMINI_API_KEY가 설정되지 않았습니다. Settings > Secrets에 API 키를 등록해주세요."
+        error: "GEMINI_API_KEY가 설정되지 않았습니다. Settings > Secrets 또는 Vercel Environment Variables에 API 키를 등록해주세요."
       });
     }
 
@@ -232,7 +232,7 @@ app.post("/api/gemini", async (req, res) => {
 });
 
 // Submissions GET
-app.get("/api/submissions", async (req, res) => {
+app.get(["/api/submissions", "/submissions"], async (req, res) => {
   try {
     // If GAS URL is set, try fetching remote sync data
     if (gasUrl) {
@@ -260,7 +260,7 @@ app.get("/api/submissions", async (req, res) => {
 });
 
 // Submissions POST (Create submission)
-app.post("/api/submissions", async (req, res) => {
+app.post(["/api/submissions", "/submissions"], async (req, res) => {
   try {
     const newSubmission = {
       id: "sub-" + Date.now(),
@@ -311,7 +311,7 @@ app.post("/api/submissions", async (req, res) => {
 });
 
 // Submissions DELETE
-app.delete("/api/submissions/:id", (req, res) => {
+app.delete(["/api/submissions/:id", "/submissions/:id"], (req, res) => {
   const { id } = req.params;
   const initialLen = submissions.length;
   submissions = submissions.filter(s => s.id !== id);
@@ -324,22 +324,25 @@ app.delete("/api/submissions/:id", (req, res) => {
 });
 
 // Config GET & POST for GAS URL and Target Staff Count
-app.get("/api/config", (_req, res) => {
+app.get(["/api/config", "/config"], (_req, res) => {
   res.json({ gasUrl, targetStaffCount });
 });
 
-app.post("/api/config", (req, res) => {
+app.post(["/api/config", "/config"], (req, res) => {
   if (req.body.gasUrl !== undefined) gasUrl = req.body.gasUrl;
   if (req.body.targetStaffCount !== undefined) targetStaffCount = Number(req.body.targetStaffCount) || 20;
   res.json({ success: true, gasUrl, targetStaffCount });
 });
 
 // Fallback for unmatched /api routes to prevent HTML response
-app.all("/api/*", (_req, res) => {
+app.use(["/api/*", "/api"], (_req, res) => {
   res.status(404).json({ error: "요청하신 API 경로를 찾을 수 없습니다." });
 });
 
-// Start Express + Vite
+// Export default app for Vercel serverless functions
+export default app;
+
+// Start Express + Vite (only when running as standalone process, not on Vercel)
 async function startServer() {
   if (process.env.NODE_ENV !== "production") {
     const vite = await createViteServer({
@@ -360,4 +363,7 @@ async function startServer() {
   });
 }
 
-startServer();
+if (!process.env.VERCEL) {
+  startServer();
+}
+

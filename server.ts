@@ -164,7 +164,7 @@ app.post(["/api/gemini", "/gemini"], async (req, res) => {
 단 한 항목도 빠뜨리지 말고 추출된 데이터 기반으로 완벽한 JSON을 구성하세요.`;
 
     const response = await ai.models.generateContent({
-      model: "gemini-3.6-flash",
+      model: "gemini-2.5-flash",
       contents: {
         parts: [
           {

@@ -135,8 +135,15 @@ export const UserSubmissionWizard: React.FC<UserSubmissionWizardProps> = ({
   const safeParseJson = async (res: Response) => {
     const text = await res.text();
     try {
-      return JSON.parse(text);
-    } catch {
+      const data = JSON.parse(text);
+      if (!res.ok && data.error) {
+        throw new Error(data.error);
+      }
+      return data;
+    } catch (err: any) {
+      if (err.message && !err.message.startsWith('서버 응답 오류') && !err.message.includes('JSON')) {
+        throw err;
+      }
       if (res.status === 413) {
         throw new Error('파일 용량이 너무 큽니다. 더 적은 용량의 이수증 파일(10MB 이하)을 선택해 주세요.');
       }

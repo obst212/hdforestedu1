@@ -334,6 +334,11 @@ app.post("/api/config", (req, res) => {
   res.json({ success: true, gasUrl, targetStaffCount });
 });
 
+// Fallback for unmatched /api routes to prevent HTML response
+app.all("/api/*", (_req, res) => {
+  res.status(404).json({ error: "요청하신 API 경로를 찾을 수 없습니다." });
+});
+
 // Start Express + Vite
 async function startServer() {
   if (process.env.NODE_ENV !== "production") {

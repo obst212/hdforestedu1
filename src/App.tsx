@@ -31,18 +31,42 @@ export default function App() {
     setToasts((prev) => prev.filter((t) => t.id !== id));
   };
 
+  // Helper to load submissions from LocalStorage fallback
+  const loadFromLocalStorage = () => {
+    const local = localStorage.getItem('local_submissions');
+    if (local) {
+      try {
+        const parsed = JSON.parse(local);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          setSubmissions(parsed);
+        }
+      } catch (e) {
+        console.error('LocalStorage parse error:', e);
+      }
+    }
+  };
+
   // Fetch Initial Data
   const fetchData = async () => {
     try {
       const res = await fetch('/api/submissions');
       if (res.ok) {
         const json = await res.json();
-        if (json.submissions) setSubmissions(json.submissions);
+        if (json.submissions && Array.isArray(json.submissions)) {
+          // Merge remote and local if needed, prioritizing remote
+          setSubmissions(json.submissions);
+          localStorage.setItem('local_submissions', JSON.stringify(json.submissions));
+        } else {
+          loadFromLocalStorage();
+        }
         if (json.gasUrl !== undefined) setGasUrl(json.gasUrl);
         if (json.targetStaffCount) setTargetStaffCount(json.targetStaffCount);
+      } else {
+        loadFromLocalStorage();
       }
     } catch (err) {
       console.warn('Backend fetch error (using fallback):', err);
+      loadFromLocalStorage();
     }
   };
 
@@ -72,7 +96,13 @@ export default function App() {
     newSubmission: CertificateSubmission,
     msg: string
   ) => {
-    setSubmissions((prev) => [newSubmission, ...prev]);
+    setSubmissions((prev) => {
+      // Deduplicate if already present
+      const filtered = prev.filter((s) => s.id !== newSubmission.id);
+      const updated = [newSubmission, ...filtered];
+      localStorage.setItem('local_submissions', JSON.stringify(updated));
+      return updated;
+    });
     addToast('success', msg);
   };
 

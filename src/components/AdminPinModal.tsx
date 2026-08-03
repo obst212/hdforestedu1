@@ -68,12 +68,13 @@ export const AdminPinModal: React.FC<AdminPinModalProps> = ({
         triggerError(data.message || '인증번호 4자리가 일치하지 않습니다.');
       }
     } catch {
-      // Fallback check if server offline (default pin 1234)
-      if (inputPin === '1234') {
+      // Fallback check if server offline (check localStorage or default 1234)
+      const savedPin = localStorage.getItem('admin_pin') || '1234';
+      if (inputPin === savedPin) {
         onSuccess();
         onClose();
       } else {
-        triggerError('인증번호 4자리가 일치하지 않습니다. (기본: 1234)');
+        triggerError('비밀번호가 일치하지 않습니다.');
       }
     } finally {
       setIsSubmitting(false);
@@ -176,8 +177,8 @@ export const AdminPinModal: React.FC<AdminPinModalProps> = ({
 
         {/* Hint Notice */}
         <div className="mt-5 text-[11px] text-slate-400 flex items-center justify-center gap-1">
-          <KeyRound className="w-3.5 h-3.5 text-amber-500" />
-          <span>초기 비밀번호: 1234 (또는 환경변수 ADMIN_PIN)</span>
+          <Lock className="w-3.5 h-3.5 text-slate-400" />
+          <span>관리자 전용 비밀번호를 입력하세요.</span>
         </div>
       </div>
     </div>

@@ -137,6 +137,7 @@ export default function App() {
               addToast('info', '사용자 모드로 전환되었습니다.');
             }}
             onRefresh={fetchData}
+            onToast={addToast}
           />
         ) : (
           <UserSubmissionWizard

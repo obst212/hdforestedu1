@@ -13,6 +13,14 @@ const PORT = 3000;
 app.use(express.json({ limit: "10mb" }));
 app.use(express.urlencoded({ extended: true, limit: "10mb" }));
 
+// Vercel Serverless Route Normalization Middleware
+app.use((req, _res, next) => {
+  if (req.originalUrl && req.originalUrl.startsWith("/api") && req.url !== req.originalUrl) {
+    req.url = req.originalUrl;
+  }
+  next();
+});
+
 // In-memory submissions database with initial sample data for 2026 현동숲유치원
 let submissions = [
   {
@@ -98,6 +106,9 @@ let gasUrl = process.env.GAS_URL || "";
 // Target staff count for completion rate calculation (default: 20)
 let targetStaffCount = 20;
 
+// Dynamic Admin PIN (Default: "1234")
+let currentAdminPin = process.env.ADMIN_PIN || "1234";
+
 // API Health Check
 app.get(["/api/health", "/health"], (_req, res) => {
   res.json({ status: "ok", timestamp: new Date().toISOString() });
@@ -106,13 +117,28 @@ app.get(["/api/health", "/health"], (_req, res) => {
 // Admin PIN Verification
 app.post(["/api/admin/verify-pin", "/admin/verify-pin"], (req, res) => {
   const { pin } = req.body;
-  const adminPin = process.env.ADMIN_PIN || "1234";
 
-  if (pin === adminPin) {
+  if (String(pin) === String(currentAdminPin)) {
     return res.json({ success: true, message: "관리자 인증에 성공하였습니다." });
   } else {
-    return res.status(401).json({ success: false, message: "인증번호가 일치하지 않습니다." });
+    return res.status(401).json({ success: false, message: "비밀번호가 일치하지 않습니다." });
   }
+});
+
+// Admin PIN Change
+app.post(["/api/admin/change-pin", "/admin/change-pin"], (req, res) => {
+  const { currentPin, newPin } = req.body;
+
+  if (String(currentPin) !== String(currentAdminPin)) {
+    return res.status(400).json({ success: false, message: "현재 비밀번호가 일치하지 않습니다." });
+  }
+
+  if (!newPin || String(newPin).trim().length < 4) {
+    return res.status(400).json({ success: false, message: "새 비밀번호는 4자리 이상이어야 합니다." });
+  }
+
+  currentAdminPin = String(newPin).trim();
+  return res.json({ success: true, message: "비밀번호가 성공적으로 변경되었습니다." });
 });
 
 // Gemini AI OCR Route
@@ -124,7 +150,7 @@ app.post(["/api/gemini", "/gemini"], async (req, res) => {
       return res.status(200).json({ success: false, error: "파일 데이터와 MIME 타입이 필요합니다." });
     }
 
-    const apiKey = process.env.GEMINI_API_KEY;
+    const apiKey = process.env.GEMINI_API_KEY || process.env.VITE_GEMINI_API_KEY;
     if (!apiKey) {
       return res.status(200).json({
         success: false,

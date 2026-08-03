@@ -1,5 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { CertificateSubmission, StaffCategory } from '../types';
+import { ChangePasswordModal } from './ChangePasswordModal';
 import {
   Users,
   Clock,
@@ -20,6 +21,7 @@ import {
   ChevronRight,
   FolderCheck,
   Sparkles,
+  KeyRound,
 } from 'lucide-react';
 
 interface AdminDashboardProps {
@@ -29,6 +31,7 @@ interface AdminDashboardProps {
   onAddManualSubmission: (newSub: CertificateSubmission) => void;
   onSwitchToUser: () => void;
   onRefresh: () => void;
+  onToast?: (type: 'success' | 'error' | 'info', message: string) => void;
 }
 
 type ViewMode = 'all' | 'byCourse';
@@ -40,11 +43,13 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   onAddManualSubmission,
   onSwitchToUser,
   onRefresh,
+  onToast,
 }) => {
   const [viewMode, setViewMode] = useState<ViewMode>('all');
   const [searchTerm, setSearchTerm] = useState<string>('');
   const [selectedCategory, setSelectedCategory] = useState<string>('전체');
   const [showAddModal, setShowAddModal] = useState<boolean>(false);
+  const [isChangePassModalOpen, setIsChangePassModalOpen] = useState<boolean>(false);
   const [selectedCourseName, setSelectedCourseName] = useState<string>('전체');
 
   // New Manual Submission Form State
@@ -227,6 +232,14 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         </div>
 
         <div className="flex items-center gap-2 shrink-0">
+          <button
+            onClick={() => setIsChangePassModalOpen(true)}
+            className="px-3.5 py-2.5 text-xs font-semibold text-amber-300 bg-slate-800 hover:bg-slate-700 active:bg-slate-900 rounded-lg border border-amber-800/60 transition-colors flex items-center gap-1.5 shadow-xs"
+            title="관리자 비밀번호 변경"
+          >
+            <KeyRound className="w-4 h-4 text-amber-400" />
+            <span className="hidden sm:inline">비밀번호 변경</span>
+          </button>
           <button
             onClick={onRefresh}
             className="p-2.5 text-xs font-medium text-slate-300 bg-slate-800 hover:bg-slate-700 rounded-lg border border-slate-700 transition-colors"
@@ -819,6 +832,18 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
           </div>
         </div>
       )}
+
+      {/* Admin Change Password Modal */}
+      <ChangePasswordModal
+        isOpen={isChangePassModalOpen}
+        onClose={() => setIsChangePassModalOpen(false)}
+        onSuccess={(msg) => {
+          if (onToast) onToast('success', msg);
+        }}
+        onError={(msg) => {
+          if (onToast) onToast('error', msg);
+        }}
+      />
     </div>
   );
 };
